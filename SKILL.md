@@ -1,119 +1,196 @@
 ---
 name: i18n-sync
-description: i18n 번역 파일 동기화 및 검증. "번역 동기화", "i18n 검사", "누락 번역", "번역 키 추가", "다국어 동기화", "i18n sync", "translation sync", "missing translations" 요청에 사용.
+description: |
+  Framework-agnostic i18n translation file sync and validation.
+  Auto-detects project i18n structure (Next.js, React, Vue, Angular, Rails, etc.).
+  "i18n sync", "translation sync", "missing translations", "check translations",
+  "sync locales", "add missing translations", "validate translations",
+  "번역 동기화", "i18n 검사", "누락 번역", "번역 키 추가", "다국어 동기화",
+  "번역 검증", "번역 파일 확인".
 ---
 
 # i18n-sync
 
-다국어 번역 파일 동기화, 누락 키 감지, 번역 파일 검증을 수행합니다.
+Auto-detects any project's i18n structure and performs translation file synchronization, missing key detection, and validation.
 
-## 지원 구조
+## Supported Patterns
 
-```
-src/lib/i18n/messages/
-├── [domain]/
-│   ├── ko.json  (기준 언어)
-│   ├── en.json
-│   └── ja.json
-```
+Automatically detects these structures:
 
-## 핵심 명령
+| Type | Example | Frameworks |
+|------|---------|------------|
+| `locale_first` | `locales/{locale}/{namespace}.json` | react-i18next, vue-i18n |
+| `domain_first` | `messages/{domain}/{locale}.json` | Custom setups |
+| `flat_locale` | `locales/{locale}.json` | next-intl, simple projects |
 
-### 1. 누락 키 검사
+Supported formats: JSON, YAML. Detects framework from `package.json`, `Gemfile`, `pubspec.yaml`.
 
-모든 도메인의 누락 번역 키를 검사합니다.
+## Workflow
+
+### Step 1: Detect Project Structure
 
 ```bash
-# 전체 검사
-find src/lib/i18n/messages -type d -mindepth 1 -maxdepth 1 | while read domain; do
-  echo "=== $(basename $domain) ==="
-  ko_keys=$(jq -r 'paths(scalars) | join(".")' "$domain/ko.json" 2>/dev/null | sort)
-  for lang in en ja; do
-    if [ -f "$domain/$lang.json" ]; then
-      lang_keys=$(jq -r 'paths(scalars) | join(".")' "$domain/$lang.json" 2>/dev/null | sort)
-      missing=$(comm -23 <(echo "$ko_keys") <(echo "$lang_keys"))
-      if [ -n "$missing" ]; then
-        echo "[$lang] 누락: $(echo "$missing" | wc -l | tr -d ' ')개"
-        echo "$missing" | head -5
-      fi
-    fi
-  done
-done
+python3 ~/.claude/skills/i18n-sync/scripts/detect_i18n.py . --pretty
 ```
 
-### 2. 특정 도메인 동기화
+Parse the JSON output and present a summary to the user:
+- Framework detected (if any)
+- i18n directory path
+- Structure type
+- Locales found with key counts
+- Reference locale (auto-detected: most keys)
+- Whether sync is needed
 
-기준 언어(ko)의 키를 다른 언어 파일에 동기화합니다.
+If `detected: false`, inform the user and suggest using `--path` to specify the i18n directory manually.
 
-**워크플로우:**
-1. ko.json의 모든 키 추출
-2. 대상 언어 파일에서 누락된 키 확인
-3. 누락 키에 `[TODO: 번역필요]` 플레이스홀더 추가
-4. 기존 번역은 유지
-
-**예시:**
-```javascript
-// ko.json에 새 키 추가됨
-{ "button": { "save": "저장", "cancel": "취소" } }
-
-// en.json 동기화 후
-{ "button": { "save": "[TODO: 번역필요] 저장", "cancel": "Cancel" } }
+Save detection output for the next step:
+```bash
+python3 ~/.claude/skills/i18n-sync/scripts/detect_i18n.py . > /tmp/i18n_config.json
 ```
 
-### 3. 번역 파일 검증
+### Step 2: Check or Sync
 
-```
-✅ 검증 항목:
-- JSON 구문 유효성
-- 키 일관성 (기준 언어 대비)
-- 빈 값 감지
-- TODO 플레이스홀더 잔존 확인
-- 중첩 구조 일치
+**Check only (no modifications):**
+```bash
+python3 ~/.claude/skills/i18n-sync/scripts/sync_i18n.py --config /tmp/i18n_config.json --check --pretty
 ```
 
-### 4. 일괄 동기화
-
-모든 도메인을 한번에 동기화합니다.
-
-## 실행 모드
-
-| 모드 | 설명 |
-|------|------|
-| `--check` | 누락 키만 검사 (수정 없음) |
-| `--sync` | 누락 키에 플레이스홀더 추가 |
-| `--domain [name]` | 특정 도메인만 처리 |
-| `--lang [code]` | 특정 언어만 처리 |
-
-## 사용 예시
-
-**"번역 동기화해줘"** → 전체 검사 후 누락 키 보고
-**"analytics 도메인 번역 동기화"** → analytics 폴더 동기화
-**"일본어 번역 누락 확인"** → ja.json 파일들만 검사
-
-## 동기화 로직
-
-```
-ko.json (기준)
-    │
-    ├── 키 A ──→ en.json에 A 없음 → "[TODO: 번역필요] {ko값}" 추가
-    │
-    ├── 키 B ──→ en.json에 B 있음 → 기존 값 유지
-    │
-    └── 키 C ──→ en.json에 C 있음 → 기존 값 유지
+**Sync (add placeholders for missing keys):**
+```bash
+python3 ~/.claude/skills/i18n-sync/scripts/sync_i18n.py --config /tmp/i18n_config.json --sync --pretty
 ```
 
-## 출력 형식
+**Dry run (preview changes without writing):**
+```bash
+python3 ~/.claude/skills/i18n-sync/scripts/sync_i18n.py --config /tmp/i18n_config.json --sync --dry-run --pretty
+```
+
+### Step 3: Validate (optional)
+
+```bash
+python3 ~/.claude/skills/i18n-sync/scripts/sync_i18n.py --config /tmp/i18n_config.json --validate --pretty
+```
+
+Checks: JSON syntax, key consistency, empty values, TODO placeholders, structure consistency.
+
+## Script Reference
+
+### detect_i18n.py
 
 ```
-=== 번역 동기화 결과 ===
-
-📁 analytics
-  ├─ en.json: ✅ 동기화됨 (3개 키 추가)
-  └─ ja.json: ⚠️ 5개 누락
-
-📁 common
-  ├─ en.json: ✅ 완료
-  └─ ja.json: ✅ 완료
-
-총계: 16개 도메인, 3개 키 추가, 5개 TODO 남음
+python3 detect_i18n.py [project_dir]
+  --path PATH      Override i18n directory (skip auto-detection)
+  --ref LOCALE     Force reference locale (e.g., en, ko)
+  --format FORMAT  Force file format: json, yaml
+  --pretty         Pretty-print output
 ```
+
+**Output fields:**
+- `detected` (bool): Whether i18n structure was found
+- `framework` (string|null): Detected framework name
+- `i18n_root` (string): Relative path to i18n directory
+- `structure_type` (string): `locale_first`, `domain_first`, `flat_locale`
+- `file_format` (string): `json` or `yaml`
+- `reference_locale` (string): Auto-detected reference language code
+- `target_locales` (array): All non-reference locale codes
+- `locales` (array): Per-locale details with key counts
+- `namespaces` (array|null): Namespace/domain names
+- `summary.needs_sync` (bool): Whether any locale has missing keys
+
+### sync_i18n.py
+
+```
+python3 sync_i18n.py --config <path> --check|--sync|--validate
+  --locale CODE        Process specific locale only
+  --namespace NAME     Process specific namespace/domain only
+  --placeholder TEXT   Custom placeholder (default: "[TODO: translate]")
+  --dry-run            Preview changes without writing (sync mode)
+  --pretty             Pretty-print output
+```
+
+**Check output fields:**
+- `results[].missing_keys` (array): Keys in reference but not in target
+- `results[].extra_keys` (array): Keys in target but not in reference
+- `results[].empty_keys` (array): Keys with empty string values
+- `results[].todo_keys` (array): Keys with TODO placeholder values
+- `summary.total_missing_keys` (int): Total missing keys across all files
+
+**Sync output fields:**
+- `results[].keys_added` (array): Keys that were added
+- `results[].already_synced` (bool): Whether file was already in sync
+- `summary.total_keys_added` (int): Total keys added
+- `summary.files_modified` (int): Files that were changed
+
+**Validate output fields:**
+- `results[].errors` (array): Critical issues (missing keys, parse errors, structure mismatches)
+- `results[].warnings` (array): Non-critical issues (extra keys, empty values, TODO residue)
+- `results[].valid` (bool): Whether file passed validation
+- `summary.all_valid` (bool): Whether all files passed
+
+## Decision Tree
+
+| User Request | Action |
+|-------------|--------|
+| "번역 동기화" / "i18n sync" / "sync translations" | Detect -> Check -> report results, ask to sync |
+| "번역 검사" / "check translations" / "missing translations" | Detect -> Check only |
+| "번역 동기화해줘" / "sync now" | Detect -> Sync (add placeholders) |
+| "번역 검증" / "validate translations" | Detect -> Validate |
+| "[locale] 번역 확인" / "check [locale]" | Detect -> Check with --locale |
+| "[namespace] 동기화" / "sync [namespace]" | Detect -> Sync with --namespace |
+| "번역 추가해줘" / "translate missing keys" | Detect -> Check -> use Claude to translate and Edit files |
+
+When the user asks Claude to actually translate (not just add placeholders), use the check output to identify missing keys, then use Claude's Read/Edit tools to add proper translations.
+
+## Output Format
+
+Present results to the user in this format:
+
+```
+=== i18n Sync Report ===
+
+Project: [framework or "Generic"]
+Structure: [structure_type]
+Reference: [reference_locale] ([total_keys] keys)
+Targets: [target_locales]
+
+[namespace or filename]
+  [locale]: [status] ([details])
+
+Summary: [totals]
+```
+
+Status icons:
+- In sync, no issues
+- Has missing keys
+- Has TODO placeholders remaining
+- Parse error or structural issue
+
+## Manual Override
+
+When auto-detection fails, specify the path explicitly:
+
+```bash
+# Custom i18n directory
+python3 ~/.claude/skills/i18n-sync/scripts/detect_i18n.py . --path src/custom/i18n --pretty
+
+# Force reference locale
+python3 ~/.claude/skills/i18n-sync/scripts/detect_i18n.py . --ref en --pretty
+
+# Force YAML format
+python3 ~/.claude/skills/i18n-sync/scripts/detect_i18n.py . --format yaml --pretty
+```
+
+## Sync Logic
+
+```
+reference_locale file (auto-detected, most keys)
+    |
+    +-- Key A --> target has A? --> Yes: keep existing value
+    |                           --> No:  add "[TODO: translate] {ref_value}"
+    |
+    +-- Key B --> target has B? --> Yes: keep existing value
+    |                           --> No:  add "[TODO: translate] {ref_value}"
+    ...
+```
+
+Existing translations are never overwritten. Only missing keys are added.

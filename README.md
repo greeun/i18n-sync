@@ -1,125 +1,210 @@
 # i18n-sync
 
-[![Claude Code Skill](https://img.shields.io/badge/Claude%20Code-Skill-blueviolet)](https://claude.ai/code)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+Framework-agnostic i18n translation file synchronization and validation for [Claude Code](https://claude.ai/code).
 
-> 다국어 번역 파일 동기화, 누락 키 감지, 번역 파일 검증을 자동화하는 Claude Code 스킬
+Any project, any framework. Auto-detects your i18n structure and keeps translation files in sync.
 
-## 개요
+## Features
 
-i18n-sync는 다국어 프로젝트에서 번역 파일 관리를 자동화합니다. 기준 언어(ko.json)를 기반으로 다른 언어 파일의 누락된 키를 감지하고, 동기화하며, 검증합니다.
+- **Auto-detection** - Scans your project to find i18n files and identify the framework
+- **Structure-aware** - Supports `locale_first`, `domain_first`, `flat_locale` patterns
+- **Reference language auto-detection** - Most complete locale becomes the reference
+- **Missing key detection** - Finds keys present in reference but missing in targets
+- **Placeholder sync** - Adds `[TODO: translate]` markers for missing translations
+- **Validation** - Checks JSON syntax, key consistency, empty values, TODO residue
+- **No external dependencies** - Python standard library only (`pyyaml` optional for YAML)
 
-### 주요 기능
+## Supported Frameworks
 
-- **누락 키 감지** - 기준 언어 대비 누락된 번역 키 자동 탐지
-- **자동 동기화** - 누락된 키에 `[TODO: 번역필요]` 플레이스홀더 자동 추가
-- **파일 검증** - JSON 구문, 키 일관성, 빈 값 검사
-- **도메인별 처리** - 특정 도메인/언어만 선택적 처리 가능
+| Framework | Detection | Default Directory |
+|-----------|-----------|-------------------|
+| next-intl | `package.json` | `messages/` |
+| react-i18next | `package.json` | `public/locales/` |
+| vue-i18n | `package.json` | `src/locales/` |
+| Angular | `package.json` | `src/locale/` |
+| Rails | `Gemfile` | `config/locales/` |
+| Flutter | `pubspec.yaml` | `lib/l10n/` |
+| react-intl / FormatJS | `package.json` | `src/translations/` |
+| Generic | Directory scan | `locales/`, `i18n/`, `lang/` |
 
-## 설치
+## Supported Structures
 
-### 요구사항
+### `flat_locale` - One file per locale
 
-- [Claude Code CLI](https://claude.ai/code) 설치 필요
-- `jq` 명령어 (JSON 처리용)
+```
+locales/
+  en.json
+  ko.json
+  ja.json
+```
 
-### 스킬 설치
+Used by: next-intl, simple projects
+
+### `locale_first` - Locale directories with namespace files
+
+```
+locales/
+  en/
+    common.json
+    auth.json
+  ko/
+    common.json
+    auth.json
+```
+
+Used by: react-i18next, vue-i18n
+
+### `domain_first` - Domain directories with locale files
+
+```
+messages/
+  common/
+    en.json
+    ko.json
+  auth/
+    en.json
+    ko.json
+```
+
+Used by: Custom setups, SvelteKit
+
+## Installation
+
+### Requirements
+
+- Python 3.10+
+- [Claude Code CLI](https://claude.ai/code)
+
+### Install as Claude Code Skill
 
 ```bash
-# 스킬 디렉토리 생성
-mkdir -p ~/.claude/skills/i18n-sync
+# Clone the repository
+git clone <repository-url> /tmp/i18n-sync
 
-# SKILL.md 파일 복사
-cp SKILL.md ~/.claude/skills/i18n-sync/
+# Create symlink
+ln -s /tmp/i18n-sync ~/.claude/skills/i18n-sync
 ```
 
-또는 직접 클론:
+Or if you already have the skill in a local directory:
 
 ```bash
-git clone https://github.com/your-username/i18n-sync.git ~/.claude/skills/i18n-sync
+ln -s "$(pwd)/i18n-sync" ~/.claude/skills/i18n-sync
 ```
 
-## 지원 구조
+## Usage
 
-다음과 같은 도메인 기반 i18n 구조를 지원합니다:
+### With Claude Code (Natural Language)
 
-```
-src/lib/i18n/messages/
-├── analytics/
-│   ├── ko.json  ← 기준 언어
-│   ├── en.json
-│   └── ja.json
-├── common/
-│   ├── ko.json
-│   ├── en.json
-│   └── ja.json
-└── [domain]/
-    ├── ko.json
-    ├── en.json
-    └── ja.json
-```
-
-## 사용법
-
-Claude Code에서 자연어로 명령하면 자동으로 스킬이 활성화됩니다.
-
-### 트리거 키워드
-
-| 한국어 | English |
-|--------|---------|
-| 번역 동기화 | i18n sync |
-| i18n 검사 | translation sync |
-| 누락 번역 | missing translations |
-| 번역 키 추가 | sync translations |
-| 다국어 동기화 | check i18n |
-
-### 명령 예시
+Simply ask Claude in natural language:
 
 ```
-# 전체 검사
-"번역 동기화해줘"
-"i18n 검사해줘"
-
-# 특정 도메인만
-"analytics 도메인 번역 동기화"
-"common 폴더 번역 검사"
-
-# 특정 언어만
-"일본어 번역 누락 확인"
-"영어 번역 동기화"
-
-# 검증
-"번역 파일 유효성 검사"
+"Check my translation files"
+"Sync missing translations"
+"Validate i18n files"
+"Check Japanese translations"
+"Sync the auth namespace"
+"i18n sync"
+"Show missing translation keys"
 ```
 
-## 동작 원리
+Claude will automatically invoke the skill and present results.
 
-### 동기화 로직
+### Standalone CLI Usage
 
-```
-ko.json (기준)
-    │
-    ├── 키 A ──→ en.json에 A 없음 → "[TODO: 번역필요] {ko값}" 추가
-    │
-    ├── 키 B ──→ en.json에 B 있음 → 기존 값 유지
-    │
-    └── 키 C ──→ en.json에 C 있음 → 기존 값 유지
+The scripts can also be used independently outside of Claude Code.
+
+#### Step 1: Detect Project Structure
+
+```bash
+python3 ~/.claude/skills/i18n-sync/scripts/detect_i18n.py . --pretty
 ```
 
-### 동기화 전후 예시
+Output:
 
-**ko.json** (새 키 추가됨)
 ```json
 {
-  "button": {
-    "save": "저장",
-    "cancel": "취소",
-    "delete": "삭제"
+  "detected": true,
+  "framework": "next-intl",
+  "i18n_root": "messages",
+  "structure_type": "flat_locale",
+  "file_format": "json",
+  "reference_locale": "ko",
+  "target_locales": ["en", "ja"],
+  "locales": [
+    { "code": "ko", "total_keys": 245, "is_reference": true },
+    { "code": "en", "total_keys": 230, "is_reference": false },
+    { "code": "ja", "total_keys": 210, "is_reference": false }
+  ],
+  "summary": {
+    "total_locales": 3,
+    "total_reference_keys": 245,
+    "max_missing_keys": 35,
+    "needs_sync": true
   }
 }
 ```
 
-**en.json** (동기화 전)
+Save the output for subsequent commands:
+
+```bash
+python3 ~/.claude/skills/i18n-sync/scripts/detect_i18n.py . > /tmp/i18n_config.json
+```
+
+#### Step 2: Check Missing Keys
+
+```bash
+python3 ~/.claude/skills/i18n-sync/scripts/sync_i18n.py \
+  --config /tmp/i18n_config.json \
+  --check --pretty
+```
+
+Output:
+
+```json
+{
+  "mode": "check",
+  "reference_locale": "ko",
+  "results": [
+    {
+      "namespace": "common",
+      "locale": "en",
+      "file": "locales/en/common.json",
+      "missing_keys": ["button.delete", "errors.network"],
+      "missing_count": 2,
+      "extra_keys": [],
+      "empty_keys": [],
+      "todo_keys": []
+    }
+  ],
+  "summary": {
+    "total_files_checked": 4,
+    "files_in_sync": 2,
+    "files_needing_sync": 2,
+    "total_missing_keys": 5
+  }
+}
+```
+
+#### Step 3: Sync (Add Placeholders)
+
+Preview changes without writing:
+
+```bash
+python3 ~/.claude/skills/i18n-sync/scripts/sync_i18n.py \
+  --config /tmp/i18n_config.json \
+  --sync --dry-run --pretty
+```
+
+Apply changes:
+
+```bash
+python3 ~/.claude/skills/i18n-sync/scripts/sync_i18n.py \
+  --config /tmp/i18n_config.json \
+  --sync --pretty
+```
+
+Before sync:
+
 ```json
 {
   "button": {
@@ -129,138 +214,186 @@ ko.json (기준)
 }
 ```
 
-**en.json** (동기화 후)
+After sync:
+
 ```json
 {
   "button": {
     "save": "Save",
     "cancel": "Cancel",
-    "delete": "[TODO: 번역필요] 삭제"
+    "delete": "[TODO: translate] uc0ad\uc81c"
   }
 }
 ```
 
-## 실행 모드
+Existing translations are never overwritten. Only missing keys are added.
 
-| 모드 | 설명 | 예시 |
-|------|------|------|
-| `--check` | 누락 키만 검사 (수정 없음) | "번역 검사만 해줘" |
-| `--sync` | 누락 키에 플레이스홀더 추가 | "번역 동기화해줘" |
-| `--domain [name]` | 특정 도메인만 처리 | "analytics 동기화" |
-| `--lang [code]` | 특정 언어만 처리 | "일본어만 동기화" |
-
-## 출력 형식
-
-```
-=== 번역 동기화 결과 ===
-
-📁 analytics
-  ├─ en.json: ✅ 동기화됨 (3개 키 추가)
-  └─ ja.json: ⚠️ 5개 누락
-
-📁 common
-  ├─ en.json: ✅ 완료
-  └─ ja.json: ✅ 완료
-
-📁 settings
-  ├─ en.json: ✅ 완료
-  └─ ja.json: ⚠️ 2개 누락
-
-────────────────────────────
-총계: 16개 도메인
-  ✅ 동기화: 3개 키 추가
-  ⚠️ TODO 남음: 7개
-```
-
-## 검증 항목
-
-스킬이 검사하는 항목:
-
-| 항목 | 설명 |
-|------|------|
-| JSON 구문 유효성 | 파싱 가능한 올바른 JSON인지 |
-| 키 일관성 | 기준 언어(ko) 대비 모든 키 존재 여부 |
-| 빈 값 감지 | 빈 문자열("") 값 탐지 |
-| TODO 플레이스홀더 | `[TODO: 번역필요]` 잔존 확인 |
-| 중첩 구조 일치 | 객체 중첩 구조가 동일한지 |
-
-## 설정 커스터마이징
-
-### 기준 언어 변경
-
-SKILL.md에서 기준 언어를 변경할 수 있습니다:
-
-```markdown
-# 기준 언어: en.json으로 변경
-ko_keys=$(jq -r 'paths(scalars) | join(".")' "$domain/en.json" ...)
-```
-
-### 지원 언어 추가
-
-```markdown
-# 중국어(zh) 추가
-for lang in en ja zh; do
-  ...
-done
-```
-
-### 플레이스홀더 형식 변경
-
-```markdown
-# 기본: [TODO: 번역필요]
-# 변경: [TRANSLATE]
-"[TRANSLATE] {ko값}"
-```
-
-## 트러블슈팅
-
-### jq 설치 필요
+#### Step 4: Validate
 
 ```bash
-# macOS
-brew install jq
-
-# Ubuntu/Debian
-sudo apt-get install jq
-
-# Windows (chocolatey)
-choco install jq
+python3 ~/.claude/skills/i18n-sync/scripts/sync_i18n.py \
+  --config /tmp/i18n_config.json \
+  --validate --pretty
 ```
 
-### 권한 오류
+Validates:
+- JSON/YAML syntax
+- Key consistency (all keys from reference exist)
+- Empty string values
+- TODO placeholder residue
+- Structural consistency (nested object types match)
+
+## CLI Reference
+
+### detect_i18n.py
+
+```
+python3 detect_i18n.py [project_dir] [options]
+```
+
+| Option | Description |
+|--------|-------------|
+| `project_dir` | Project root directory (default: `.`) |
+| `--path PATH` | Override i18n directory path (skip auto-detection) |
+| `--ref LOCALE` | Force reference locale (e.g., `en`, `ko`) |
+| `--format FORMAT` | Force file format: `json` or `yaml` |
+| `--pretty` | Pretty-print JSON output |
+
+**Exit codes:** `0` = detected, `1` = not detected
+
+### sync_i18n.py
+
+```
+python3 sync_i18n.py --config <path> --check|--sync|--validate [options]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--config PATH` | Detection config JSON file (required), use `-` for stdin |
+| `--check` | Report missing keys only (read-only) |
+| `--sync` | Add missing keys with placeholder values |
+| `--validate` | Run full validation suite |
+| `--locale CODE` | Process only this target locale |
+| `--namespace NAME` | Process only this namespace/domain |
+| `--placeholder TEXT` | Custom placeholder (default: `[TODO: translate]`) |
+| `--dry-run` | Preview changes without writing (sync mode only) |
+| `--pretty` | Pretty-print JSON output |
+
+**Exit codes:**
+- `--check`: `0` = all in sync, `1` = missing keys found
+- `--sync`: `0` = always
+- `--validate`: `0` = all valid, `1` = errors found
+
+## Piping & Composition
+
+Detect and check in one command:
 
 ```bash
-chmod -R 755 ~/.claude/skills/i18n-sync
+python3 detect_i18n.py . | python3 sync_i18n.py --config - --check --pretty
 ```
 
-### 스킬이 트리거되지 않음
+Filter specific locale:
 
-Claude Code를 재시작하거나, 더 명확한 키워드 사용:
+```bash
+python3 sync_i18n.py --config /tmp/i18n_config.json --check --locale ja --pretty
 ```
-"i18n-sync 스킬로 번역 동기화해줘"
+
+Filter specific namespace:
+
+```bash
+python3 sync_i18n.py --config /tmp/i18n_config.json --sync --namespace auth --pretty
 ```
 
-## 관련 스킬
+Custom placeholder text:
 
-- [skill-wizard](https://github.com/your-username/skill-wizard) - Claude Code 스킬 생성 가이드
-- [skill-creator](https://github.com/your-username/skill-creator) - 스킬 템플릿 생성기
+```bash
+python3 sync_i18n.py --config /tmp/i18n_config.json --sync \
+  --placeholder "[NEEDS TRANSLATION]" --pretty
+```
 
-## 기여
+## Manual Override
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+When auto-detection doesn't find your files, specify the path manually:
 
-## 라이선스
+```bash
+# Custom i18n directory
+python3 detect_i18n.py . --path src/custom/translations --pretty
 
-MIT License - 자유롭게 사용, 수정, 배포 가능합니다.
+# Force reference locale to English
+python3 detect_i18n.py . --ref en --pretty
 
-## 작성자
+# Force YAML format
+python3 detect_i18n.py . --format yaml --pretty
 
-Claude Code Skill by [@your-username](https://github.com/your-username)
+# Combine options
+python3 detect_i18n.py . --path config/locales --ref en --format yaml --pretty
+```
 
----
+## Auto-Detection Priority
 
-**Made with Claude Code**
+The detection script searches these directories in order:
+
+| Priority | Directory |
+|----------|-----------|
+| 1 | `src/lib/i18n/messages` |
+| 2 | `public/locales` |
+| 3 | `src/locales` |
+| 4 | `src/locale` |
+| 5 | `messages` |
+| 6 | `locales` |
+| 7 | `locale` |
+| 8 | `i18n` |
+| 9 | `lang` |
+| 10 | `translations` |
+| 11 | `config/locales` |
+| 12 | `src/i18n` |
+| 13+ | `src/messages`, `app/i18n`, `resources/lang`, ... |
+
+The first directory that contains valid locale-coded files is selected.
+
+## Reference Language Detection
+
+The reference locale is automatically determined by key count:
+
+1. Count leaf keys across all files for each locale
+2. The locale with the most keys becomes the reference
+3. If tied, prefer: `en` > `ko` > `ja` > `zh` > `fr` > `de` > `es` > `pt` > `it` > `ru`
+
+Override with `--ref`:
+
+```bash
+python3 detect_i18n.py . --ref en
+```
+
+## Sync Logic
+
+```
+Reference locale (auto-detected)
+    |
+    +-- Key A --> target has A? --> Yes: keep existing translation
+    |                           --> No:  add "[TODO: translate] {reference_value}"
+    |
+    +-- Key B --> target has B? --> Yes: keep existing translation
+    |                           --> No:  add "[TODO: translate] {reference_value}"
+    ...
+
+  - Existing translations are never overwritten
+  - New keys are inserted at the same position as in the reference file
+  - Extra keys in target (not in reference) are preserved at the end
+```
+
+## Project Structure
+
+```
+i18n-sync/
+  SKILL.md                        # Claude Code skill definition
+  scripts/
+    detect_i18n.py                # Project structure auto-detection
+    sync_i18n.py                  # Sync, check, and validation
+  references/
+    framework-patterns.md         # Framework-specific pattern reference
+```
+
+## License
+
+MIT
