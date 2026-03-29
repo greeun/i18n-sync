@@ -221,7 +221,7 @@ After sync:
   "button": {
     "save": "Save",
     "cancel": "Cancel",
-    "delete": "[TODO: translate] uc0ad\uc81c"
+    "delete": "[TODO: translate] 삭제"
   }
 }
 ```
