@@ -7,6 +7,7 @@ description: |
   "sync locales", "add missing translations", "validate translations",
   "번역 동기화", "i18n 검사", "누락 번역", "번역 키 추가", "다국어 동기화",
   "번역 검증", "번역 파일 확인".
+version: 1.0.0
 ---
 
 # i18n-sync

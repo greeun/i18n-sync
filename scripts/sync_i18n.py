@@ -95,11 +95,27 @@ def save_json(filepath: str, data: dict) -> None:
 
 
 def save_yaml(filepath: str, data: dict) -> None:
-    """Save YAML file."""
+    """Save YAML file, emitting plain mappings in insertion order.
+
+    The merged data is built from OrderedDict; without a representer PyYAML
+    serializes those as `!!python/object/apply:collections.OrderedDict` tags,
+    which safe_load then refuses to read back. Register an OrderedDict->mapping
+    representer on a local Dumper so the output is clean, round-trippable YAML."""
     try:
         import yaml
+
+        class _OrderedDumper(yaml.SafeDumper):
+            pass
+
+        def _ordered_dict_representer(dumper, value):
+            return dumper.represent_mapping(
+                yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, value.items())
+
+        _OrderedDumper.add_representer(OrderedDict, _ordered_dict_representer)
+
         with open(filepath, 'w', encoding='utf-8') as f:
-            yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+            yaml.dump(data, f, Dumper=_OrderedDumper,
+                      default_flow_style=False, allow_unicode=True, sort_keys=False)
     except ImportError:
         print(f'Warning: pyyaml not installed, cannot write YAML file: {filepath}', file=sys.stderr)
 
@@ -156,6 +172,21 @@ def merge_missing_keys(target: dict, reference: dict, missing_keys: list,
 
 # --- File Resolution ---
 
+def detect_yaml_ext(i18n_root: str) -> str:
+    """Pick the YAML extension the project actually uses ('.yaml' or '.yml').
+
+    Projects may use either spelling. Probe the i18n directory (one level deep
+    for nested structures) and prefer '.yaml' when present, otherwise '.yml'.
+    Defaults to '.yaml' when nothing is found (no files to process anyway)."""
+    root = Path(i18n_root)
+    if root.is_dir():
+        if any(root.glob('*.yaml')) or any(root.glob('*/*.yaml')):
+            return '.yaml'
+        if any(root.glob('*.yml')) or any(root.glob('*/*.yml')):
+            return '.yml'
+    return '.yaml'
+
+
 def resolve_file_pairs(config: dict) -> list:
     """Resolve reference/target file pairs from config.
     Returns list of dicts: {namespace, ref_file, target_locale, target_file}
@@ -168,7 +199,7 @@ def resolve_file_pairs(config: dict) -> list:
     target_locales = config['target_locales']
     i18n_root = os.path.join(project_dir, config['i18n_root'])
 
-    ext = '.json' if file_format == 'json' else '.yml'
+    ext = '.json' if file_format == 'json' else detect_yaml_ext(i18n_root)
 
     if structure == 'flat_locale':
         ref_file = os.path.join(i18n_root, f'{ref_locale}{ext}')
